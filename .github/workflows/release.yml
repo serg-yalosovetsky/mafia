@@ -88,11 +88,6 @@ jobs:
           "$APKSIGNER" verify --print-certs "out/mafia-$APP_VERSION.apk" | tee signer.txt
           grep -q "CN=Serhii Yalosovetskyi" signer.txt
 
-      - uses: actions/upload-artifact@v3
-        with:
-          name: mafia-apk
-          path: out/*.apk
-
       - name: Релиз в Forgejo
         if: github.event_name == 'push'
         env:
@@ -109,3 +104,11 @@ jobs:
             -H "Authorization: token $TOKEN" \
             -F "attachment=@out/mafia-$APP_VERSION.apk" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); print("asset:", d["browser_download_url"])'
+
+      # Артефакт — приятный бонус: если хранилище артефактов на раннере
+      # не поднято, релиз с APK всё равно уже создан.
+      - uses: actions/upload-artifact@v3
+        continue-on-error: true
+        with:
+          name: mafia-apk
+          path: out/*.apk
