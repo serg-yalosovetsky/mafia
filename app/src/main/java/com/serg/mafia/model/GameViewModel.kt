@@ -116,15 +116,24 @@ class GameViewModel : ViewModel() {
     fun skipSpeaker() = finishSpeech()
 
     // ------------------------------------------------------------- ночь
-    private fun beginNight(base: GameState = s): GameState = base.copy(
-        phase = Phase.NIGHT,
-        nightNumber = base.nightNumber + 1,
-        nightStepIndex = 0,
-        night = NightActions(),
-        lastNight = NightOutcome(),
-        firstNightMissDecided = false,
-        log = base.log + "— Ночь ${base.nightNumber + 1} —",
-    )
+    private fun beginNight(base: GameState = s): GameState {
+        val number = base.nightNumber + 1
+        // Промах первой ночи, назначенный в настройках, не надо переспрашивать у ведущего.
+        val plannedMiss = number == 1 && base.setup.firstNightMiss
+        val lines = buildList {
+            add("— Ночь $number —")
+            if (plannedMiss) add("Первая ночь: мафия стреляет в воздух (настройка стола)")
+        }
+        return base.copy(
+            phase = Phase.NIGHT,
+            nightNumber = number,
+            nightStepIndex = 0,
+            night = NightActions(mafiaMissed = plannedMiss),
+            lastNight = NightOutcome(),
+            firstNightMissDecided = plannedMiss,
+            log = base.log + lines,
+        )
+    }
 
     fun goToNight() {
         s = beginNight()
@@ -337,6 +346,11 @@ class GameViewModel : ViewModel() {
         } else {
             state
         }
+    }
+
+    /** Прервать партию и вернуться к настройкам, сохранив стол (случайный «старт» — не приговор). */
+    fun backToSetup() {
+        s = GameState(setup = s.setup)
     }
 
     fun newGameSameTable() {

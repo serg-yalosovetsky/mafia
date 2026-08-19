@@ -52,15 +52,25 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
         bottom = {
             Column {
                 if (!intro) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        GhostButton("Выставить", Modifier.weight(1f)) { nominateOpen = true }
-                        GhostButton("Фол", Modifier.weight(1f)) { foulOpen = true }
+                    GhostButton("Выставить на голосование", Modifier.fillMaxWidth()) {
+                        nominateOpen = true
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+                // Фол можно выдать в любой круг речей, включая знакомство,
+                // и тут же снять, если ведущий нажал лишний раз.
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GhostButton("+ фол", Modifier.weight(1f)) { vm.addFoul(speaker.id) }
+                    GhostButton(
+                        if (speaker.fouls > 0) "− снять фол" else "нет фолов",
+                        Modifier.weight(1f),
+                    ) { if (speaker.fouls > 0) vm.removeFoul(speaker.id) }
+                    GhostButton("стол", Modifier.weight(1f)) { foulOpen = true }
+                }
+                Spacer(Modifier.height(8.dp))
                 BigButton("Речь окончена") { vm.finishSpeech() }
             }
         },
@@ -93,6 +103,33 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
                 onFinished = { music.sfx(Sfx.TIMEUP) },
             )
             Spacer(Modifier.height(16.dp))
+            val fouled = s.players.filter { it.fouls > 0 }
+            if (fouled.isNotEmpty()) {
+                Text("Фолы:", color = Moon, fontSize = 13.sp)
+                Spacer(Modifier.height(4.dp))
+                LazyColumn(Modifier.heightIn(max = 160.dp)) {
+                    items(fouled, key = { it.id }) { p ->
+                        PlayerRow(
+                            player = p,
+                            badge = "${p.fouls}",
+                            badgeColor = Blood,
+                            trailing = when {
+                                !p.alive -> "выбыл по фолам"
+                                p.speechSkipPending -> "пропустит речь"
+                                p.fouls == 1 -> "предупреждение"
+                                else -> null
+                            },
+                            onClick = { foulOpen = true },
+                            extra = {
+                                TextButton(onClick = { vm.removeFoul(p.id) }) {
+                                    Text("−", color = Moon, fontSize = 20.sp)
+                                }
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
             if (!intro && s.nominations.isNotEmpty()) {
                 Text("На голосовании:", color = Moon, fontSize = 13.sp)
                 Spacer(Modifier.height(4.dp))

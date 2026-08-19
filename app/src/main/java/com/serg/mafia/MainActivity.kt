@@ -9,8 +9,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -32,15 +36,19 @@ import com.serg.mafia.ui.CheatSheetDialog
 import com.serg.mafia.ui.DealScreen
 import com.serg.mafia.ui.EmptySpeechScreen
 import com.serg.mafia.ui.GameOverScreen
+import androidx.compose.ui.graphics.Color
+import com.serg.mafia.ui.Blood
 import com.serg.mafia.ui.Gold
 import com.serg.mafia.ui.IntroNightScreen
 import com.serg.mafia.ui.LocalMusic
 import com.serg.mafia.ui.MafiaTheme
 import com.serg.mafia.ui.MorningScreen
+import com.serg.mafia.ui.Muted
 import com.serg.mafia.ui.MusicSettingsDialog
 import com.serg.mafia.ui.NightScreen
 import com.serg.mafia.ui.SetupScreen
 import com.serg.mafia.ui.SpeechScreen
+import com.serg.mafia.ui.Surface1
 import com.serg.mafia.ui.VoteScreen
 
 class MainActivity : ComponentActivity() {
@@ -80,6 +88,7 @@ private fun Root(vm: GameViewModel) {
     val s = vm.s
     var cheatOpen by remember { mutableStateOf(false) }
     var musicOpen by remember { mutableStateOf(false) }
+    var exitOpen by remember { mutableStateOf(false) }
 
     // Музыка и сигналы едут за фазой партии.
     LaunchedEffect(s.phase, s.nightNumber, s.dayNumber) {
@@ -120,6 +129,11 @@ private fun Root(vm: GameViewModel) {
         // Быстрый доступ ведущего: шпаргалка с ролями и настройки музыки.
         Box(Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = 4.dp)) {
             androidx.compose.foundation.layout.Row {
+                if (s.phase != Phase.SETUP) {
+                    IconButton(onClick = { exitOpen = true }) {
+                        Icon(Icons.Filled.Home, contentDescription = "К настройкам", tint = Gold)
+                    }
+                }
                 if (s.phase != Phase.SETUP && s.phase != Phase.DEAL) {
                     IconButton(onClick = { cheatOpen = true }) {
                         Icon(Icons.Filled.List, contentDescription = "Шпаргалка", tint = Gold)
@@ -134,4 +148,28 @@ private fun Root(vm: GameViewModel) {
 
     if (cheatOpen) CheatSheetDialog(vm) { cheatOpen = false }
     if (musicOpen) MusicSettingsDialog { musicOpen = false }
+    if (exitOpen) {
+        // Нажал «старт» случайно — из партии всегда можно выйти обратно к столу.
+        AlertDialog(
+            onDismissRequest = { exitOpen = false },
+            containerColor = Surface1,
+            title = { Text("Вернуться к настройкам?", color = Color(0xFFEDE7F2)) },
+            text = {
+                Text(
+                    "Текущая партия прервётся, роли будут розданы заново. " +
+                        "Состав стола и имена сохранятся.",
+                    color = Muted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.backToSetup()
+                    exitOpen = false
+                }) { Text("Прервать партию", color = Blood) }
+            },
+            dismissButton = {
+                TextButton(onClick = { exitOpen = false }) { Text("Играем дальше", color = Gold) }
+            },
+        )
+    }
 }

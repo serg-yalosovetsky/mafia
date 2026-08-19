@@ -1,0 +1,57 @@
+name: ci
+
+# Быстрая проверка каждого пуша в main: правила ведущего должны оставаться
+# зелёными, а приложение — собираться. Подпись здесь не нужна, это отладочный APK.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_SDK_ROOT: /opt/android-sdk
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx1536m -Dkotlin.compiler.execution.strategy=in-process
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17 и утилиты
+        run: |
+          set -eu
+          if ! command -v javac >/dev/null || ! javac -version 2>&1 | grep -q '^javac 17'; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openjdk-17-jdk-headless
+          fi
+          command -v unzip >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unzip
+          echo "JAVA_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" >> "$GITHUB_ENV"
+
+      - name: Android SDK
+        run: |
+          set -eu
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -sSLo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip && rm tools.zip && mv cmdline-tools latest
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$GITHUB_WORKSPACE/local.properties"
+
+      - name: Тесты логики ведущего
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Отладочная сборка
+        run: ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: mafia-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk

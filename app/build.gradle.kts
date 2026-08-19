@@ -1,8 +1,30 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Релизный ключ: локально — keystore.properties рядом с проектом,
+// в CI — переменные окружения из секретов Forgejo. Нет ни того, ни другого
+// (например, у стороннего клона) — собираем отладочной подписью, чтобы
+// `assembleRelease` не падал на пустом месте.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+
+fun signingValue(prop: String, env: String): String? =
+    keystoreProps.getProperty(prop) ?: System.getenv(env)
+
+val releaseStoreFile = signingValue("storeFile", "MAFIA_KEYSTORE_FILE")
+val releaseStorePassword = signingValue("storePassword", "MAFIA_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "MAFIA_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "MAFIA_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword,
+).all { !it.isNullOrBlank() } && file(releaseStoreFile!!).exists()
 
 android {
     namespace = "com.serg.mafia"
@@ -12,8 +34,20 @@ android {
         applicationId = "com.serg.mafia"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // CI задаёт версию тегом: -PversionName=1.2.3 -PversionCode=<номер прогона>.
+        versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (findProperty("versionName") as String?) ?: "1.0"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -21,7 +55,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (hasReleaseSigning) "release" else "debug")
         }
     }
 

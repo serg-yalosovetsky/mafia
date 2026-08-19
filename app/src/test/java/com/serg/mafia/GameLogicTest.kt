@@ -165,6 +165,50 @@ class GameLogicTest {
     }
 
     @Test
+    fun `настройка выстрела в воздух убирает жертву первой ночи`() {
+        val vm = GameViewModel().apply {
+            updateSetup {
+                Setup(
+                    playerCount = 10,
+                    names = com.serg.mafia.model.defaultNames(10),
+                    withDoctor = false,
+                    firstNightMiss = true,
+                )
+            }
+            startDeal()
+        }
+        vm.finishDeal(); vm.finishIntro(); vm.finishSpeechRound()
+        assertTrue(vm.s.night.mafiaMissed)
+        vm.chooseNightTarget(Role.MAFIA, vm.s.players.first { it.role == Role.CIVILIAN }.id)
+        repeat(vm.s.nightSteps.size) { vm.nightNext() }
+        assertTrue(vm.s.lastNight.killed.isEmpty())
+        // Вторая ночь уже обычная: промах не повторяется.
+        vm.startDay(); vm.finishSpeechRound()
+        assertFalse(vm.s.night.mafiaMissed)
+    }
+
+    @Test
+    fun `ручное число мафии меняет состав`() {
+        val setup = Setup(playerCount = 12, mafiaOverride = 5)
+        assertEquals(5, setup.mafiaTotal)
+        assertEquals(4, setup.roleCounts[Role.MAFIA])
+        assertEquals(1, setup.roleCounts[Role.DON])
+        assertTrue(setup.isValid)
+        // Больше половины стола чёрными сделать нельзя.
+        assertEquals(setup.maxMafia, Setup(playerCount = 12, mafiaOverride = 99).mafiaTotal)
+    }
+
+    @Test
+    fun `возврат к настройкам сохраняет стол и сбрасывает партию`() {
+        val vm = game(players = 8)
+        vm.finishDeal()
+        vm.backToSetup()
+        assertEquals(Phase.SETUP, vm.s.phase)
+        assertTrue(vm.s.players.isEmpty())
+        assertEquals(8, vm.s.setup.playerCount)
+    }
+
+    @Test
     fun `перекос состава предлагает выстрел в воздух`() {
         assertTrue(Setup(playerCount = 6, withManiac = true).suggestsFirstNightMiss)
         assertFalse(Setup(playerCount = 15).suggestsFirstNightMiss)

@@ -41,11 +41,40 @@ data class Setup(
     val withSheriff: Boolean = true,
     val withButterfly: Boolean = false,
     val withManiac: Boolean = false,
+    /** Ведущий может сам добавить или убрать чёрных — партия станет сложнее или проще. */
+    val mafiaOverride: Int? = null,
+    /** Первая ночь заранее назначена промахом: мафия стреляет в воздух, красным легче. */
+    val firstNightMiss: Boolean = false,
     val introSpeechSeconds: Int = 30,
     val daySpeechSeconds: Int = 60,
 ) {
-    /** Чёрных всего (дон входит в это число) — классическая треть стола. */
-    val mafiaTotal: Int get() = Math.round(playerCount / 3f).toInt().coerceAtLeast(1)
+    /** Классическая треть стола — то, что приложение предлагает по умолчанию. */
+    val autoMafia: Int get() = Math.round(playerCount / 3f).toInt().coerceAtLeast(1)
+
+    val maxMafia: Int get() = ((playerCount - 1) / 2).coerceAtLeast(1)
+
+    /** Чёрных всего (дон входит в это число): ручное значение ведущего или авто. */
+    val mafiaTotal: Int get() = (mafiaOverride ?: autoMafia).coerceIn(1, maxMafia)
+
+    val mafiaIsManual: Boolean get() = mafiaOverride != null && mafiaOverride != autoMafia
+
+    /** Насколько тяжело городу: сколько мирных приходится на одного убийцу. */
+    val redsPerKiller: Float
+        get() {
+            val killers = mafiaTotal + if (withManiac) 1 else 0
+            val reds = playerCount - killers
+            return if (killers == 0) 0f else reds / killers.toFloat()
+        }
+
+    /** Подсказка ведущему на экране настройки. */
+    val difficultyLabel: String
+        get() = when {
+            redsPerKiller >= 2.6f -> "Городу легко"
+            redsPerKiller >= 2.1f -> "Городу проще обычного"
+            redsPerKiller >= 1.8f -> "Классический баланс"
+            redsPerKiller >= 1.5f -> "Городу тяжело"
+            else -> "Городу очень тяжело"
+        }
 
     val roleCounts: Map<Role, Int>
         get() {

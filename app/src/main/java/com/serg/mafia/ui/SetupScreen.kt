@@ -67,12 +67,39 @@ fun SetupScreen(vm: GameViewModel) {
                         )
                         Spacer(Modifier.width(16.dp))
                         Column {
-                            Text("Чёрных: ${setup.mafiaTotal}", color = BlackTeam, fontSize = 14.sp)
                             Text(
                                 "Мирных: ${setup.roleCounts[Role.CIVILIAN] ?: 0}",
                                 color = RedTeam,
                                 fontSize = 14.sp,
                             )
+                            Text(setup.difficultyLabel, color = Gold, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+            item {
+                SectionCard("Чёрных за столом") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Stepper(
+                            value = setup.mafiaTotal,
+                            min = 1,
+                            max = setup.maxMafia,
+                            onChange = { v -> vm.updateSetup { it.copy(mafiaOverride = v) } },
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text("мафия + дон", color = BlackTeam, fontSize = 13.sp)
+                            Text(
+                                if (setup.mafiaIsManual) "вручную · обычно ${setup.autoMafia}" else "обычное число",
+                                color = Muted,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                    if (setup.mafiaIsManual) {
+                        Spacer(Modifier.height(8.dp))
+                        GhostButton("Вернуть обычное число") {
+                            vm.updateSetup { it.copy(mafiaOverride = null) }
                         }
                     }
                 }
@@ -94,6 +121,11 @@ fun SetupScreen(vm: GameViewModel) {
                     RoleToggle("Маньяк", "Играет сам за себя", setup.withManiac) { v ->
                         vm.updateSetup { it.copy(withManiac = v) }
                     }
+                    RoleToggle(
+                        "Первая ночь — в воздух",
+                        "Мафия промахивается первым выстрелом: красным легче",
+                        setup.firstNightMiss,
+                    ) { v -> vm.updateSetup { it.copy(firstNightMiss = v) } }
                 }
             }
             item {
