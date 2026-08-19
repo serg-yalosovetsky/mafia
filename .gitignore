@@ -1,0 +1,23 @@
+# Gradle / Android
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Промежуточные файлы генераторов ассетов
+tools/__pycache__/
+*.wav
