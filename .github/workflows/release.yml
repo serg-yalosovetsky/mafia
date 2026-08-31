@@ -1,8 +1,13 @@
 name: release-apk
 
-# Тег vX.Y.Z собирает подписанный релизный APK и кладёт его в релиз Forgejo.
+# Тег vX.Y.Z собирает подписанный релизный APK и кладёт его в релиз GitHub.
 # Ручной запуск (workflow_dispatch) делает тот же APK, но версией 0.0.<run>-dev
 # и без создания релиза — чтобы можно было проверить пайплайн, не плодя теги.
+#
+# Секреты репозитория (Settings → Secrets and variables → Actions):
+#   MAFIA_KEYSTORE_B64      — base64 файла mafia-release.jks
+#   MAFIA_KEYSTORE_PASSWORD — пароль хранилища (он же пароль ключа)
+#   MAFIA_KEY_ALIAS         — алиас ключа
 on:
   push:
     tags: ['v*']
@@ -12,11 +17,11 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 env:
-  ANDROID_SDK_ROOT: /opt/android-sdk
-  # Раннер режет джоб по 3 ГБ памяти: демон Gradle и второй процесс компилятора
-  # туда не помещаются, поэтому собираем в один процесс.
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx1536m -Dkotlin.compiler.execution.strategy=in-process
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g
 
 jobs:
   build:
@@ -24,28 +29,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: JDK 17 и утилиты
-        run: |
-          set -eu
-          if ! command -v javac >/dev/null || ! javac -version 2>&1 | grep -q '^javac 17'; then
-            apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openjdk-17-jdk-headless
-          fi
-          command -v unzip >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unzip
-          echo "JAVA_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" >> "$GITHUB_ENV"
-          javac -version
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-      - name: Android SDK
+      - name: Gradle-кэш
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK — platform 35 и build-tools 35
         run: |
           set -eu
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          cd "$ANDROID_SDK_ROOT/cmdline-tools"
-          curl -sSLo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q tools.zip && rm tools.zip && mv cmdline-tools latest
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$GITHUB_WORKSPACE/local.properties"
+          SDKMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
 
       - name: Релизный ключ из секретов
         run: |
@@ -84,31 +82,27 @@ jobs:
       - name: Проверить, что APK подписан релизным ключом
         run: |
           set -eu
-          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           "$APKSIGNER" verify --print-certs "out/mafia-$APP_VERSION.apk" | tee signer.txt
           grep -q "CN=Serhii Yalosovetskyi" signer.txt
 
-      - name: Релиз в Forgejo
+      - name: Релиз в GitHub
         if: github.event_name == 'push'
         env:
-          TOKEN: ${{ secrets.MAFIA_FORGEJO_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
           BODY=$(printf 'Мафия %s — приложение-ведущий.\n\nПодписано релизным ключом, собрано из %s.\nAPK ниже: скачать и установить на телефон.' "$APP_VERSION" "$GITHUB_SHA")
-          RELEASE_ID=$(curl -sS -X POST "$API/releases" \
-            -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
-            -d "$(python3 -c 'import json,os,sys; print(json.dumps({"tag_name": os.environ["GITHUB_REF_NAME"], "name": "Мафия " + os.environ["APP_VERSION"], "body": sys.argv[1]}))' "$BODY")" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-          curl -sS -X POST "$API/releases/$RELEASE_ID/assets?name=mafia-$APP_VERSION.apk" \
-            -H "Authorization: token $TOKEN" \
-            -F "attachment=@out/mafia-$APP_VERSION.apk" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); print("asset:", d["browser_download_url"])'
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Мафия $APP_VERSION" \
+            --notes "$BODY" \
+            "out/mafia-$APP_VERSION.apk"
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | "asset: \(.url)"'
 
-      # Артефакт — приятный бонус: если хранилище артефактов на раннере
-      # не поднято, релиз с APK всё равно уже создан.
-      - uses: actions/upload-artifact@v3
-        continue-on-error: true
+      - uses: actions/upload-artifact@v4
         with:
           name: mafia-apk
           path: out/*.apk
+          if-no-files-found: error
