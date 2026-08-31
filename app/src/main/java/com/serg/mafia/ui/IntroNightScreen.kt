@@ -29,10 +29,10 @@ fun IntroNightScreen(vm: GameViewModel) {
     val actors = s.introActors(step)
 
     Screen(
-        title = "Знакомство",
-        subtitle = "Шаг ${s.introStepIndex + 1} из ${steps.size} · город спит",
+        title = t("intro_title"),
+        subtitle = t("intro_step", s.introStepIndex + 1, steps.size),
         bottom = {
-            BigButton(if (s.introStepIndex == steps.lastIndex) "Город просыпается" else "Дальше") {
+            BigButton(if (s.introStepIndex == steps.lastIndex) t("city_wakes") else t("next")) {
                 vm.introNext()
             }
         },
@@ -40,17 +40,17 @@ fun IntroNightScreen(vm: GameViewModel) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             RolePortraitCard(step.role, size = 132, showTitle = false)
             Spacer(Modifier.height(12.dp))
-            Text(step.title, style = MaterialTheme.typography.headlineMedium, color = Gold)
+            Text(t(step.titleKey), style = MaterialTheme.typography.headlineMedium, color = Gold)
             Spacer(Modifier.height(6.dp))
             Text(
-                step.prompt,
+                t(step.promptKey),
                 color = Muted,
                 textAlign = TextAlign.Center,
                 fontSize = 14.sp,
             )
             Spacer(Modifier.height(14.dp))
             Text(
-                if (actors.size > 1) "Открывают глаза:" else "Открывает глаза:",
+                if (actors.size > 1) t("opens_eyes_many") else t("opens_eyes_one"),
                 color = Moon,
                 fontSize = 13.sp,
             )
@@ -59,9 +59,9 @@ fun IntroNightScreen(vm: GameViewModel) {
                 items(actors, key = { it.id }) { p ->
                     PlayerRow(
                         player = p,
-                        badge = p.role.title,
+                        badge = t(p.role.titleKey),
                         badgeColor = factionColor(p.role.faction),
-                        trailing = if (p.role == Role.DON) "главный" else null,
+                        trailing = if (p.role == Role.DON) t("chief") else null,
                     )
                 }
             }

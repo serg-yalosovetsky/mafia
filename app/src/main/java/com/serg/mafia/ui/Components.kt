@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.serg.mafia.audio.MusicController
@@ -63,7 +65,7 @@ import com.serg.mafia.model.Player
 import com.serg.mafia.model.Role
 import kotlinx.coroutines.delay
 
-val LocalMusic = staticCompositionLocalOf<MusicController> { error("MusicController не задан") }
+val LocalMusic = staticCompositionLocalOf<MusicController> { error("music controller is not provided") }
 
 @Composable
 fun Screen(
@@ -78,10 +80,26 @@ fun Screen(
             .background(Ink)
             .padding(top = 36.dp, start = 16.dp, end = 16.dp, bottom = 8.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, color = Color(0xFFEDE7F2))
+        // Справа поверх шапки висят иконки ведущего (домой / шпаргалка / музыка) —
+        // оставляем им место, иначе на узком экране они наезжают на заголовок.
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color(0xFFEDE7F2),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(end = 116.dp),
+        )
         if (subtitle != null) {
             Spacer(Modifier.height(4.dp))
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Muted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 116.dp),
+            )
         }
         Spacer(Modifier.height(14.dp))
         Box(Modifier.weight(1f)) { content() }
@@ -120,8 +138,17 @@ fun GhostButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
         onClick = onClick,
         modifier = modifier.height(48.dp),
         shape = RoundedCornerShape(14.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        Text(text, color = Muted)
+        // На телефоне кнопки в ряду узкие: текст ужимаем, но не рвём на полуслове.
+        Text(
+            text,
+            color = Muted,
+            fontSize = 14.sp,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -130,7 +157,7 @@ fun RolePortraitCard(role: Role, size: Int = 180, showTitle: Boolean = true) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Image(
             painter = painterResource(rolePortrait(role)),
-            contentDescription = role.title,
+            contentDescription = t(role.titleKey),
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(size.dp)
@@ -140,7 +167,7 @@ fun RolePortraitCard(role: Role, size: Int = 180, showTitle: Boolean = true) {
         if (showTitle) {
             Spacer(Modifier.height(10.dp))
             Text(
-                role.title,
+                t(role.titleKey),
                 style = MaterialTheme.typography.titleLarge,
                 color = factionColor(role.faction),
             )
@@ -197,14 +224,22 @@ fun PlayerRow(
                     player.name,
                     color = if (dimmed || !player.alive) Muted else Color(0xFFEDE7F2),
                     fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 val marks = buildList {
-                    if (!player.alive) add(player.deathReason ?: "выбыл")
-                    if (player.fouls > 0) add("фолы: ${player.fouls}")
-                    if (player.speechSkipPending) add("пропуск речи")
+                    if (!player.alive) add(t(player.deathReasonKey ?: "out_mark"))
+                    if (player.fouls > 0) add(t("fouls_mark", player.fouls))
+                    if (player.speechSkipPending) add(t("skip_speech_mark"))
                 }
                 if (marks.isNotEmpty()) {
-                    Text(marks.joinToString(" · "), color = Muted, fontSize = 12.sp)
+                    Text(
+                        marks.joinToString(" · "),
+                        color = Muted,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (badge != null) {
@@ -221,7 +256,13 @@ fun PlayerRow(
                 Spacer(Modifier.width(8.dp))
             }
             if (trailing != null) {
-                Text(trailing, color = trailingColor, fontSize = 13.sp)
+                Text(
+                    trailing,
+                    color = trailingColor,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             extra?.invoke()
         }
@@ -234,7 +275,8 @@ fun PlayerPicker(
     players: List<Player>,
     selectedId: Int?,
     modifier: Modifier = Modifier,
-    badgeFor: (Player) -> Pair<String, Color>? = { null },
+    // @Composable: подписи бейджей берутся из словаря переводов.
+    badgeFor: @Composable (Player) -> Pair<String, Color>? = { null },
     onSelect: (Int) -> Unit,
 ) {
     LazyColumn(modifier.fillMaxSize()) {
@@ -305,11 +347,11 @@ fun SpeechTimer(
             ) {
                 Icon(
                     if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (running) "Пауза" else "Старт",
+                    contentDescription = if (running) t("pause") else t("start"),
                     tint = Gold,
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(if (running) "Пауза" else "Старт", color = Color(0xFFEDE7F2))
+                Text(if (running) t("pause") else t("start"), color = Color(0xFFEDE7F2))
             }
             Button(
                 onClick = {
@@ -320,9 +362,9 @@ fun SpeechTimer(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Surface2),
             ) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Сброс", tint = Moon)
+                Icon(Icons.Filled.Refresh, contentDescription = t("reset"), tint = Moon)
                 Spacer(Modifier.width(6.dp))
-                Text("Сброс", color = Color(0xFFEDE7F2))
+                Text(t("reset"), color = Color(0xFFEDE7F2))
             }
         }
     }
@@ -345,12 +387,12 @@ fun MiniPlayer() {
             IconButton(onClick = { music.enableMusic(!music.enabled) }) {
                 Icon(
                     if (music.enabled) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
-                    contentDescription = "Музыка",
+                    contentDescription = t("music"),
                     tint = if (music.enabled) Gold else Muted,
                 )
             }
             Text(
-                if (music.enabled) music.currentTitle.ifBlank { "музыка" } else "музыка выключена",
+                if (music.enabled) music.currentTitle.ifBlank { t("music") } else t("music_off"),
                 color = Muted,
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -362,12 +404,16 @@ fun MiniPlayer() {
             IconButton(onClick = { music.toggle() }, enabled = music.enabled) {
                 Icon(
                     if (music.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = "Пауза",
+                    contentDescription = t("pause"),
                     tint = if (music.enabled) Moon else Muted,
                 )
             }
             IconButton(onClick = { music.next() }, enabled = music.enabled) {
-                Icon(Icons.Filled.SkipNext, contentDescription = "Следующий", tint = if (music.enabled) Moon else Muted)
+                Icon(
+                    Icons.Filled.SkipNext,
+                    contentDescription = t("next"),
+                    tint = if (music.enabled) Moon else Muted,
+                )
             }
         }
         if (showVolume) {

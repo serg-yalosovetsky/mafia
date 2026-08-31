@@ -14,12 +14,29 @@ class GameViewModel : ViewModel() {
     var s by mutableStateOf(GameState())
         private set
 
+    /** Как называть игрока без имени — шаблон приходит из UI на языке интерфейса. */
+    var defaultNamePattern: String = "Player %d"
+
+    private fun defaultName(n: Int): String = String.format(defaultNamePattern, n)
+
+    /** Сменить язык интерфейса: он же язык имён по умолчанию. */
+    fun setLang(code: String, namePattern: String) {
+        defaultNamePattern = namePattern
+        val renamedDefaults = s.setup.names.mapIndexed { i, name ->
+            if (isDefaultName(name)) defaultName(i + 1) else name
+        }
+        s = s.copy(setup = s.setup.copy(lang = code, names = renamedDefaults))
+    }
+
+    private fun isDefaultName(name: String): Boolean =
+        Regex("^(Гравець|Игрок|Player)\\s+\\d+$").matches(name.trim())
+
     // ------------------------------------------------------------- настройка
     fun updateSetup(block: (Setup) -> Setup) {
         val old = s.setup
         val new = block(old)
         val names = if (new.playerCount != old.names.size) {
-            List(new.playerCount) { i -> new.names.getOrNull(i) ?: "Игрок ${i + 1}" }
+            List(new.playerCount) { i -> new.names.getOrNull(i) ?: defaultName(i + 1) }
         } else {
             new.names
         }
@@ -36,14 +53,14 @@ class GameViewModel : ViewModel() {
     fun startDeal() {
         val roles = s.setup.deal()
         val players = s.setup.names.mapIndexed { i, name ->
-            Player(id = i, name = name.ifBlank { "Игрок ${i + 1}" }, role = roles[i])
+            Player(id = i, name = name.ifBlank { "#${i + 1}" }, role = roles[i])
         }
         s = GameState(
             setup = s.setup,
             players = players,
             phase = Phase.DEAL,
             dealIndex = 0,
-            log = listOf("Партия началась: ${players.size} игроков"),
+            log = listOf(LogEntry("log_game_started", listOf(players.size))),
         )
     }
 
@@ -84,7 +101,7 @@ class GameViewModel : ViewModel() {
                         if (it.id == candidate.id) it.copy(speechSkipPending = false) else it
                     },
                     spokenIds = st.spokenIds + candidate.id,
-                    log = st.log + "${candidate.name} пропускает речь (2 фола)",
+                    log = st.log + LogEntry("log_skip_speech", listOf(candidate.name)),
                 )
                 continue
             }
@@ -101,10 +118,10 @@ class GameViewModel : ViewModel() {
             when (s.phase) {
                 Phase.INTRO_DAY -> beginNight(st)
                 // Круг закрыт: если никого не выставили — голосовать не за кого, сразу ночь.
-                Phase.DAY -> if (st.nominations.isEmpty()) {
-                    beginNight(st.copy(log = st.log + "Никого не выставили — день без голосования"))
+                Phase.DAY -> if (st.candidates.isEmpty()) {
+                    beginNight(st.copy(log = st.log + LogEntry("log_no_nominations")))
                 } else {
-                    st.copy(phase = Phase.VOTE, votes = st.nominations.keys.associateWith { 0 })
+                    st.copy(phase = Phase.VOTE, votes = st.candidates.associateWith { 0 })
                 }
                 else -> st
             }
@@ -121,8 +138,8 @@ class GameViewModel : ViewModel() {
         // Промах первой ночи, назначенный в настройках, не надо переспрашивать у ведущего.
         val plannedMiss = number == 1 && base.setup.firstNightMiss
         val lines = buildList {
-            add("— Ночь $number —")
-            if (plannedMiss) add("Первая ночь: мафия стреляет в воздух (настройка стола)")
+            add(LogEntry("log_night", listOf(number)))
+            if (plannedMiss) add(LogEntry("log_planned_miss"))
         }
         return base.copy(
             phase = Phase.NIGHT,
@@ -143,7 +160,7 @@ class GameViewModel : ViewModel() {
         s = s.copy(
             night = s.night.copy(mafiaMissed = miss),
             firstNightMissDecided = true,
-            log = if (miss) s.log + "Первая ночь: мафия стреляет в воздух" else s.log,
+            log = if (miss) s.log + LogEntry("log_miss") else s.log,
         )
     }
 
@@ -210,13 +227,23 @@ class GameViewModel : ViewModel() {
         ) healed else null
 
         val players = s.players.map {
-            if (it.id in killed) it.copy(alive = false, deathReason = "убит ночью", deathDay = s.nightNumber) else it
+            if (it.id in killed) {
+                it.copy(alive = false, deathReasonKey = "death_night", deathDay = s.nightNumber)
+            } else {
+                it
+            }
         }
 
-        val lines = ArrayList<String>()
-        if (blocked != null) lines += "Бабочка заблокировала ${s.player(blocked).name}"
-        if (killed.isEmpty()) lines += "Ночь ${s.nightNumber}: жертв нет"
-        else lines += "Ночь ${s.nightNumber}: погиб(ла) " + killed.joinToString { s.player(it).name }
+        val lines = ArrayList<LogEntry>()
+        if (blocked != null) lines += LogEntry("log_blocked", listOf(s.player(blocked).name))
+        lines += if (killed.isEmpty()) {
+            LogEntry("log_no_victims", listOf(s.nightNumber))
+        } else {
+            LogEntry(
+                "log_killed",
+                listOf(s.nightNumber, killed.joinToString { s.player(it).name }),
+            )
+        }
 
         val newState = s.copy(
             players = players,
@@ -237,23 +264,46 @@ class GameViewModel : ViewModel() {
     fun startDay() {
         val base = s.copy(
             dayNumber = s.dayNumber + 1,
-            nominations = emptyMap(),
+            nominationsBy = emptyMap(),
             votes = emptyMap(),
-            log = s.log + "— День ${s.dayNumber + 1} —",
+            log = s.log + LogEntry("log_day", listOf(s.dayNumber + 1)),
         )
         s = startSpeechRound(Phase.DAY, base)
     }
 
+    /** Записать, кого выставил игрок. Повторный вызов заменяет прежний выбор. */
     fun nominate(byId: Int, targetId: Int) {
-        if (s.nominations.containsKey(targetId)) return
+        if (s.nominationsBy[byId] == targetId) return
         s = s.copy(
-            nominations = s.nominations + (targetId to byId),
-            log = s.log + "${s.player(byId).name} выставляет ${s.player(targetId).name}",
+            nominationsBy = s.nominationsBy + (byId to targetId),
+            log = s.log + LogEntry(
+                "log_nominate",
+                listOf(s.player(byId).name, s.player(targetId).name),
+            ),
         )
     }
 
+    /** Игрок передумал: снять его выставление. */
+    fun clearNomination(byId: Int) {
+        val target = s.nominationsBy[byId] ?: return
+        s = s.copy(
+            nominationsBy = s.nominationsBy - byId,
+            log = s.log + LogEntry(
+                "log_nomination_cleared",
+                listOf(s.player(byId).name, s.player(target).name),
+            ),
+        )
+    }
+
+    /** Убрать кандидата целиком — вместе со всеми, кто его выставлял. */
     fun cancelNomination(targetId: Int) {
-        s = s.copy(nominations = s.nominations - targetId)
+        s = s.copy(nominationsBy = s.nominationsBy.filterValues { it != targetId })
+    }
+
+    /** Голосование за игрока, которого никто формально не выставлял (ведущий добавил вручную). */
+    fun addVoteCandidate(targetId: Int) {
+        if (s.votes.containsKey(targetId)) return
+        s = s.copy(votes = s.votes + (targetId to 0))
     }
 
     // ------------------------------------------------------------- фолы
@@ -261,16 +311,20 @@ class GameViewModel : ViewModel() {
         val p = s.player(playerId)
         val fouls = p.fouls + 1
         var updated = p.copy(fouls = fouls)
-        val lines = ArrayList<String>()
+        val lines = ArrayList<LogEntry>()
         when {
-            fouls == 1 -> lines += "${p.name}: фол 1 — предупреждение"
+            fouls == 1 -> lines += LogEntry("log_foul1", listOf(p.name))
             fouls == 2 -> {
                 updated = updated.copy(speechSkipPending = true)
-                lines += "${p.name}: фол 2 — пропускает ближайшую речь"
+                lines += LogEntry("log_foul2", listOf(p.name))
             }
             fouls >= 3 -> {
-                updated = updated.copy(alive = false, deathReason = "3 фола", deathDay = s.dayNumber)
-                lines += "${p.name}: фол 3 — выбывает из игры"
+                updated = updated.copy(
+                    alive = false,
+                    deathReasonKey = "death_fouls",
+                    deathDay = s.dayNumber,
+                )
+                lines += LogEntry("log_foul3", listOf(p.name))
             }
         }
         var st = s.copy(
@@ -278,7 +332,7 @@ class GameViewModel : ViewModel() {
             log = s.log + lines,
         )
         if (fouls >= 3) {
-            st = st.copy(nominations = st.nominations - playerId)
+            st = st.copy(nominationsBy = st.nominationsBy.filterValues { it != playerId } - playerId)
             if (st.speakerId == playerId) st = nextSpeakerState(st.copy(spokenIds = st.spokenIds + playerId))
         }
         s = withWinCheck(st)
@@ -291,12 +345,12 @@ class GameViewModel : ViewModel() {
         val updated = p.copy(
             fouls = fouls,
             speechSkipPending = if (fouls < 2) false else p.speechSkipPending,
-            alive = if (p.deathReason == "3 фола") true else p.alive,
-            deathReason = if (p.deathReason == "3 фола") null else p.deathReason,
+            alive = if (p.deathReasonKey == "death_fouls") true else p.alive,
+            deathReasonKey = if (p.deathReasonKey == "death_fouls") null else p.deathReasonKey,
         )
         s = s.copy(
             players = s.players.map { if (it.id == playerId) updated else it },
-            log = s.log + "${p.name}: фол снят (осталось $fouls)",
+            log = s.log + LogEntry("log_foul_removed", listOf(p.name, fouls)),
         )
     }
 
@@ -316,16 +370,20 @@ class GameViewModel : ViewModel() {
         val p = s.player(playerId)
         val st = s.copy(
             players = s.players.map {
-                if (it.id == playerId) it.copy(alive = false, deathReason = "голосование", deathDay = s.dayNumber) else it
+                if (it.id == playerId) {
+                    it.copy(alive = false, deathReasonKey = "death_vote", deathDay = s.dayNumber)
+                } else {
+                    it
+                }
             },
-            log = s.log + "Голосованием выбывает ${p.name} (${p.role.title})",
+            log = s.log + LogEntry("log_vote_out", listOf(p.name, p.role.titleKey)),
         )
         val checked = withWinCheck(st)
         s = if (checked.winner != null) checked else beginNight(checked)
     }
 
     fun skipVote() {
-        val checked = withWinCheck(s.copy(log = s.log + "Голосование: никто не выбыл"))
+        val checked = withWinCheck(s.copy(log = s.log + LogEntry("log_vote_nobody")))
         s = if (checked.winner != null) checked else beginNight(checked)
     }
 
@@ -342,7 +400,11 @@ class GameViewModel : ViewModel() {
             else -> null
         }
         return if (winner != null) {
-            state.copy(phase = Phase.GAME_OVER, winner = winner, log = state.log + winnerText(winner))
+            state.copy(
+                phase = Phase.GAME_OVER,
+                winner = winner,
+                log = state.log + LogEntry(winnerKey(winner)),
+            )
         } else {
             state
         }

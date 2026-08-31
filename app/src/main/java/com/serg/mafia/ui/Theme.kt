@@ -60,10 +60,10 @@ fun factionColor(f: Faction): Color = when (f) {
     Faction.MANIAC -> ManiacTeam
 }
 
-fun factionLabel(f: Faction): String = when (f) {
-    Faction.RED -> "красный"
-    Faction.BLACK -> "чёрный"
-    Faction.MANIAC -> "маньяк"
+fun factionKey(f: Faction): String = when (f) {
+    Faction.RED -> "faction_red"
+    Faction.BLACK -> "faction_black"
+    Faction.MANIAC -> "faction_maniac"
 }
 
 fun rolePortrait(role: Role): Int = when (role) {

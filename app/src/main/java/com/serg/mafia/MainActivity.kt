@@ -1,5 +1,6 @@
 package com.serg.mafia
 
+import android.content.Context
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -39,6 +40,8 @@ import com.serg.mafia.ui.GameOverScreen
 import androidx.compose.ui.graphics.Color
 import com.serg.mafia.ui.Blood
 import com.serg.mafia.ui.Gold
+import com.serg.mafia.ui.Lang
+import com.serg.mafia.ui.LocalLang
 import com.serg.mafia.ui.IntroNightScreen
 import com.serg.mafia.ui.LocalMusic
 import com.serg.mafia.ui.MafiaTheme
@@ -48,6 +51,9 @@ import com.serg.mafia.ui.MusicSettingsDialog
 import com.serg.mafia.ui.NightScreen
 import com.serg.mafia.ui.SetupScreen
 import com.serg.mafia.ui.SpeechScreen
+import com.serg.mafia.ui.rawString
+import com.serg.mafia.ui.t
+import com.serg.mafia.ui.tr
 import com.serg.mafia.ui.Surface1
 import com.serg.mafia.ui.VoteScreen
 
@@ -62,13 +68,28 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         music = MusicController(this)
 
+        val prefs = getSharedPreferences("mafia", Context.MODE_PRIVATE)
+        // Язык интерфейса переживает перезапуск: по умолчанию украинский.
+        val saved = Lang.of(prefs.getString("lang", vm.s.setup.lang))
+        applyLang(saved)
+
         setContent {
+            val lang = Lang.of(vm.s.setup.lang)
+            music.builtinTitle = { track -> tr(lang, "music_builtin", tr(lang, track.titleKey)) }
             MafiaTheme {
-                CompositionLocalProvider(LocalMusic provides music) {
-                    Root(vm)
+                CompositionLocalProvider(LocalMusic provides music, LocalLang provides lang) {
+                    Root(vm) { chosen ->
+                        prefs.edit().putString("lang", chosen.code).apply()
+                        applyLang(chosen)
+                    }
                 }
             }
         }
+    }
+
+    /** Смена языка меняет и шаблон имён по умолчанию («Гравець 1» / «Игрок 1» / «Player 1»). */
+    private fun applyLang(lang: Lang) {
+        vm.setLang(lang.code, rawString(lang, "player_n"))
     }
 
     override fun onStop() {
@@ -83,7 +104,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Root(vm: GameViewModel) {
+private fun Root(vm: GameViewModel, onLangChange: (Lang) -> Unit) {
     val music = LocalMusic.current
     val s = vm.s
     var cheatOpen by remember { mutableStateOf(false) }
@@ -115,7 +136,7 @@ private fun Root(vm: GameViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         when (s.phase) {
-            Phase.SETUP -> SetupScreen(vm)
+            Phase.SETUP -> SetupScreen(vm, onLangChange)
             Phase.DEAL -> DealScreen(vm)
             Phase.INTRO_NIGHT -> IntroNightScreen(vm)
             Phase.INTRO_DAY -> if (s.speakerId != null) SpeechScreen(vm, intro = true) else EmptySpeechScreen(vm)
@@ -131,16 +152,16 @@ private fun Root(vm: GameViewModel) {
             androidx.compose.foundation.layout.Row {
                 if (s.phase != Phase.SETUP) {
                     IconButton(onClick = { exitOpen = true }) {
-                        Icon(Icons.Filled.Home, contentDescription = "К настройкам", tint = Gold)
+                        Icon(Icons.Filled.Home, contentDescription = t("to_setup"), tint = Gold)
                     }
                 }
                 if (s.phase != Phase.SETUP && s.phase != Phase.DEAL) {
                     IconButton(onClick = { cheatOpen = true }) {
-                        Icon(Icons.Filled.List, contentDescription = "Шпаргалка", tint = Gold)
+                        Icon(Icons.Filled.List, contentDescription = t("cheatsheet"), tint = Gold)
                     }
                 }
                 IconButton(onClick = { musicOpen = true }) {
-                    Icon(Icons.Filled.Tune, contentDescription = "Музыка", tint = Gold)
+                    Icon(Icons.Filled.Tune, contentDescription = t("music"), tint = Gold)
                 }
             }
         }
@@ -153,22 +174,16 @@ private fun Root(vm: GameViewModel) {
         AlertDialog(
             onDismissRequest = { exitOpen = false },
             containerColor = Surface1,
-            title = { Text("Вернуться к настройкам?", color = Color(0xFFEDE7F2)) },
-            text = {
-                Text(
-                    "Текущая партия прервётся, роли будут розданы заново. " +
-                        "Состав стола и имена сохранятся.",
-                    color = Muted,
-                )
-            },
+            title = { Text(t("exit_title"), color = Color(0xFFEDE7F2)) },
+            text = { Text(t("exit_body"), color = Muted) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.backToSetup()
                     exitOpen = false
-                }) { Text("Прервать партию", color = Blood) }
+                }) { Text(t("exit_yes"), color = Blood) }
             },
             dismissButton = {
-                TextButton(onClick = { exitOpen = false }) { Text("Играем дальше", color = Gold) }
+                TextButton(onClick = { exitOpen = false }) { Text(t("exit_no"), color = Gold) }
             },
         )
     }

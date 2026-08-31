@@ -4,31 +4,32 @@ package com.serg.mafia.model
 enum class Faction { RED, BLACK, MANIAC }
 
 enum class Role(
-    val title: String,
+    /** Ключ перевода названия роли — текст живёт в словаре, а не в модели. */
+    val titleKey: String,
     val faction: Faction,
     /** Как выглядит при проверке комиссара. Маньяк для комиссара — чёрный. */
     val checksAs: Faction = faction,
 ) {
-    CIVILIAN("Мирный житель", Faction.RED),
-    DOCTOR("Врач", Faction.RED),
-    SHERIFF("Комиссар", Faction.RED),
-    BUTTERFLY("Бабочка", Faction.RED),
-    MAFIA("Мафия", Faction.BLACK),
-    DON("Дон", Faction.BLACK),
-    MANIAC("Маньяк", Faction.MANIAC, checksAs = Faction.BLACK);
+    CIVILIAN("role_civilian", Faction.RED),
+    DOCTOR("role_doctor", Faction.RED),
+    SHERIFF("role_sheriff", Faction.RED),
+    BUTTERFLY("role_butterfly", Faction.RED),
+    MAFIA("role_mafia", Faction.BLACK),
+    DON("role_don", Faction.BLACK),
+    MANIAC("role_maniac", Faction.MANIAC, checksAs = Faction.BLACK);
 
     val isBlack: Boolean get() = faction == Faction.BLACK
 
-    /** Короткая подсказка на карточке игрока при раздаче. */
-    val hint: String
+    /** Ключ короткой подсказки на карточке игрока при раздаче. */
+    val hintKey: String
         get() = when (this) {
-            CIVILIAN -> "Ты за город. Слушай, думай, вычисляй чёрных."
-            DOCTOR -> "Ночью лечишь одного игрока. Можешь спасти и себя."
-            SHERIFF -> "Ночью проверяешь одного игрока — чёрный он или красный."
-            BUTTERFLY -> "Ночью блокируешь одного игрока: его ночное действие не сработает."
-            MAFIA -> "Ночью вместе с другими чёрными выбираешь жертву."
-            DON -> "Главный в мафии. Ночью ищешь комиссара."
-            MANIAC -> "Ты сам за себя. Ночью убиваешь одного. Побеждаешь, оставшись один."
+            CIVILIAN -> "hint_civilian"
+            DOCTOR -> "hint_doctor"
+            SHERIFF -> "hint_sheriff"
+            BUTTERFLY -> "hint_butterfly"
+            MAFIA -> "hint_mafia"
+            DON -> "hint_don"
+            MANIAC -> "hint_maniac"
         }
 }
 
@@ -45,6 +46,7 @@ data class Setup(
     val mafiaOverride: Int? = null,
     /** Первая ночь заранее назначена промахом: мафия стреляет в воздух, красным легче. */
     val firstNightMiss: Boolean = false,
+    val lang: String = "uk",
     val introSpeechSeconds: Int = 30,
     val daySpeechSeconds: Int = 60,
 ) {
@@ -66,14 +68,14 @@ data class Setup(
             return if (killers == 0) 0f else reds / killers.toFloat()
         }
 
-    /** Подсказка ведущему на экране настройки. */
-    val difficultyLabel: String
+    /** Ключ подсказки ведущему на экране настройки: насколько тяжело городу. */
+    val difficultyKey: String
         get() = when {
-            redsPerKiller >= 2.6f -> "Городу легко"
-            redsPerKiller >= 2.1f -> "Городу проще обычного"
-            redsPerKiller >= 1.8f -> "Классический баланс"
-            redsPerKiller >= 1.5f -> "Городу тяжело"
-            else -> "Городу очень тяжело"
+            redsPerKiller >= 2.6f -> "diff_easy"
+            redsPerKiller >= 2.1f -> "diff_easier"
+            redsPerKiller >= 1.8f -> "diff_normal"
+            redsPerKiller >= 1.5f -> "diff_hard"
+            else -> "diff_very_hard"
         }
 
     val roleCounts: Map<Role, Int>
@@ -98,12 +100,13 @@ data class Setup(
     /** Не сходится состав — партию не начинаем (спец-ролей больше, чем людей за столом). */
     val isValid: Boolean get() = assignedTotal == playerCount && playerCount in 4..20
 
-    val validationMessage: String?
+    /** Ключ ошибки состава и его параметры (нужны для подстановки в перевод). */
+    val validationKey: Pair<String, List<Any>>?
         get() = when {
-            playerCount < 4 -> "Минимум 4 игрока"
-            playerCount > 20 -> "Максимум 20 игроков"
+            playerCount < 4 -> "err_min_players" to listOf(4)
+            playerCount > 20 -> "err_max_players" to listOf(20)
             assignedTotal > playerCount ->
-                "Ролей больше, чем игроков (${assignedTotal} на ${playerCount}). Выключи лишние."
+                "err_too_many_roles" to listOf(assignedTotal, playerCount)
             else -> null
         }
 
@@ -126,4 +129,6 @@ data class Setup(
     }
 }
 
-fun defaultNames(n: Int): List<String> = (1..n).map { "Игрок $it" }
+/** Имена по умолчанию задаёт UI на языке интерфейса; здесь — запасной вариант. */
+fun defaultNames(n: Int, pattern: String = "Player %d"): List<String> =
+    (1..n).map { String.format(pattern, it) }

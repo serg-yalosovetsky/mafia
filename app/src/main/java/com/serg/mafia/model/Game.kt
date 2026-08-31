@@ -20,7 +20,7 @@ data class Player(
     val fouls: Int = 0,
     /** Второй фол снимает ОДНУ ближайшую речь и после этого сгорает. */
     val speechSkipPending: Boolean = false,
-    val deathReason: String? = null,
+    val deathReasonKey: String? = null,
     val deathDay: Int = 0,
 )
 
@@ -35,11 +35,14 @@ data class NightActions(
     val maniacTarget: Int? = null,
 )
 
-/** Один шаг ночи: кого будим и что он выбирает. */
+/** Запись журнала: ключ перевода и подстановки — язык выбирается при показе. */
+data class LogEntry(val key: String, val args: List<Any> = emptyList())
+
+/** Один шаг ночи: кого будим и что он выбирает (тексты — ключи перевода). */
 data class NightStep(
     val role: Role,
-    val title: String,
-    val prompt: String,
+    val titleKey: String,
+    val promptKey: String,
     /** Показывать ли ведущему принадлежность каждого игрока прямо в списке. */
     val revealFactions: Boolean = false,
     /** Показывать ли, кто из списка комиссар (шаг дона). */
@@ -72,14 +75,21 @@ data class GameState(
     val lastNight: NightOutcome = NightOutcome(),
     val firstNightMissDecided: Boolean = false,
 
-    /** кандидат -> кто выставил */
-    val nominations: Map<Int, Int> = emptyMap(),
+    /** кто выставил -> кого выставил; у каждого игрока свой записанный выбор */
+    val nominationsBy: Map<Int, Int> = emptyMap(),
     val votes: Map<Int, Int> = emptyMap(),
 
-    val log: List<String> = emptyList(),
+    val log: List<LogEntry> = emptyList(),
     val winner: Faction? = null,
 ) {
     val alivePlayers: List<Player> get() = players.filter { it.alive }
+
+    /** Кандидаты дня в порядке появления. */
+    val candidates: List<Int> get() = nominationsBy.values.distinct()
+
+    /** Кто выставил этого кандидата. */
+    fun nominatedBy(candidateId: Int): List<Int> =
+        nominationsBy.filterValues { it == candidateId }.keys.toList()
     fun player(id: Int): Player = players.first { it.id == id }
     fun playerOrNull(id: Int?): Player? = id?.let { pid -> players.firstOrNull { it.id == pid } }
     fun holders(role: Role): List<Player> = players.filter { it.role == role }
@@ -94,45 +104,45 @@ data class GameState(
             if (aliveHolders(Role.BUTTERFLY).isNotEmpty()) {
                 steps += NightStep(
                     Role.BUTTERFLY,
-                    "Просыпается бабочка",
-                    "Кого бабочка блокирует этой ночью?",
+                    "step_butterfly",
+                    "step_butterfly_q",
                 )
             }
             if (aliveBlack.isNotEmpty()) {
                 steps += NightStep(
                     Role.MAFIA,
-                    "Просыпается мафия",
-                    "Кого мафия убивает?",
+                    "step_mafia",
+                    "step_mafia_q",
                 )
             }
             if (aliveHolders(Role.DON).isNotEmpty() && holders(Role.SHERIFF).isNotEmpty()) {
                 steps += NightStep(
                     Role.DON,
-                    "Просыпается дон",
-                    "Кого дон проверяет на комиссара?",
+                    "step_don",
+                    "step_don_q",
                     revealSheriff = true,
                 )
             }
             if (aliveHolders(Role.DOCTOR).isNotEmpty()) {
                 steps += NightStep(
                     Role.DOCTOR,
-                    "Просыпается врач",
-                    "Кого врач лечит?",
+                    "step_doctor",
+                    "step_doctor_q",
                 )
             }
             if (aliveHolders(Role.SHERIFF).isNotEmpty()) {
                 steps += NightStep(
                     Role.SHERIFF,
-                    "Просыпается комиссар",
-                    "Кого комиссар проверяет?",
+                    "step_sheriff",
+                    "step_sheriff_q",
                     revealFactions = true,
                 )
             }
             if (aliveHolders(Role.MANIAC).isNotEmpty()) {
                 steps += NightStep(
                     Role.MANIAC,
-                    "Просыпается маньяк",
-                    "Кого маньяк убивает?",
+                    "step_maniac",
+                    "step_maniac_q",
                 )
             }
             return steps
@@ -145,24 +155,24 @@ data class GameState(
             if (aliveBlack.isNotEmpty()) {
                 steps += NightStep(
                     Role.MAFIA,
-                    "Мафия знакомится",
-                    "Чёрные открывают глаза и видят друг друга. Сверься со списком.",
+                    "intro_mafia",
+                    "intro_mafia_q",
                 )
             }
             if (holders(Role.DON).isNotEmpty()) {
-                steps += NightStep(Role.DON, "Дон", "Дон показывает себя мафии.")
+                steps += NightStep(Role.DON, "intro_don", "intro_don_q")
             }
             if (holders(Role.BUTTERFLY).isNotEmpty()) {
-                steps += NightStep(Role.BUTTERFLY, "Бабочка", "Бабочка открывает глаза.")
+                steps += NightStep(Role.BUTTERFLY, "intro_butterfly", "intro_butterfly_q")
             }
             if (holders(Role.DOCTOR).isNotEmpty()) {
-                steps += NightStep(Role.DOCTOR, "Врач", "Врач открывает глаза.")
+                steps += NightStep(Role.DOCTOR, "intro_doctor", "intro_doctor_q")
             }
             if (holders(Role.SHERIFF).isNotEmpty()) {
-                steps += NightStep(Role.SHERIFF, "Комиссар", "Комиссар открывает глаза.")
+                steps += NightStep(Role.SHERIFF, "intro_sheriff", "intro_sheriff_q")
             }
             if (holders(Role.MANIAC).isNotEmpty()) {
-                steps += NightStep(Role.MANIAC, "Маньяк", "Маньяк открывает глаза.")
+                steps += NightStep(Role.MANIAC, "intro_maniac", "intro_maniac_q")
             }
             return steps
         }
@@ -183,8 +193,8 @@ data class GameState(
     }
 }
 
-fun winnerText(f: Faction): String = when (f) {
-    Faction.RED -> "Победил город"
-    Faction.BLACK -> "Победила мафия"
-    Faction.MANIAC -> "Победил маньяк"
+fun winnerKey(f: Faction): String = when (f) {
+    Faction.RED -> "win_red"
+    Faction.BLACK -> "win_black"
+    Faction.MANIAC -> "win_maniac"
 }

@@ -18,6 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.serg.mafia.model.Faction
 import com.serg.mafia.model.GameViewModel
-import com.serg.mafia.model.winnerText
+import com.serg.mafia.model.winnerKey
 
 @Composable
 fun MorningScreen(vm: GameViewModel) {
@@ -36,24 +40,24 @@ fun MorningScreen(vm: GameViewModel) {
     val killed = s.lastNight.killed
 
     Screen(
-        title = "Утро",
-        subtitle = "Итоги ночи ${s.nightNumber}",
-        bottom = { BigButton("Начать день") { vm.startDay() } },
+        title = t("morning_title"),
+        subtitle = t("morning_sub", s.nightNumber),
+        bottom = { BigButton(t("start_day")) { vm.startDay() } },
     ) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             if (killed.isEmpty()) {
                 Spacer(Modifier.height(24.dp))
-                Text("Этой ночью все выжили", style = MaterialTheme.typography.headlineMedium, color = Gold)
+                Text(t("all_survived"), style = MaterialTheme.typography.headlineMedium, color = Gold)
                 if (s.lastNight.savedByDoctor != null) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Врач успел вовремя",
+                        t("doctor_saved"),
                         color = Muted,
                         fontSize = 14.sp,
                     )
                 }
             } else {
-                Text("Город потерял", color = Muted, fontSize = 14.sp)
+                Text(t("city_lost"), color = Muted, fontSize = 14.sp)
                 Spacer(Modifier.height(10.dp))
                 killed.forEach { id ->
                     val p = s.player(id)
@@ -65,14 +69,14 @@ fun MorningScreen(vm: GameViewModel) {
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color(0xFFEDE7F2),
                         )
-                        Text(p.role.title, color = factionColor(p.role.faction), fontSize = 16.sp)
+                        Text(t(p.role.titleKey), color = factionColor(p.role.faction), fontSize = 16.sp)
                     }
                     Spacer(Modifier.height(16.dp))
                 }
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "Живых за столом: ${s.alivePlayers.size}",
+                t("alive_count", s.alivePlayers.size),
                 color = Muted,
                 fontSize = 13.sp,
             )
@@ -84,33 +88,40 @@ fun MorningScreen(vm: GameViewModel) {
 fun VoteScreen(vm: GameViewModel) {
     val s = vm.s
     val leaders = vm.voteLeaders
-    val candidates = s.nominations.keys.toList()
+    // Кандидаты — те, кого выставили, плюс добавленные ведущим вручную.
+    val candidates = s.votes.keys.toList().ifEmpty { s.candidates }
+    var addOpen by remember { mutableStateOf(false) }
 
     Screen(
-        title = "Голосование",
-        subtitle = "День ${s.dayNumber} · живых ${s.alivePlayers.size}",
+        title = t("vote_title"),
+        subtitle = t("vote_sub", s.dayNumber, s.alivePlayers.size),
         bottom = {
             Column {
                 when {
-                    leaders.size == 1 -> BigButton("Выгнать ${s.player(leaders[0]).name}") {
+                    leaders.size == 1 -> BigButton(t("expel", s.player(leaders[0]).name)) {
                         vm.eliminate(leaders[0])
                     }
                     leaders.size > 1 -> Text(
-                        "Ничья: " + leaders.joinToString { s.player(it).name } +
-                            " — переголосуйте или выберите вручную нажатием на карточку",
+                        t("tie") + leaders.joinToString { s.player(it).name } + t("tie_hint"),
                         color = Gold,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                     else -> Text(
-                        "Проставь голоса против кандидатов",
+                        t("put_votes"),
                         color = Muted,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                GhostButton("Никто не выбывает", Modifier.fillMaxWidth()) { vm.skipVote() }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GhostButton(t("add_player"), Modifier.weight(1f)) { addOpen = true }
+                    GhostButton(t("nobody_out"), Modifier.weight(1f)) { vm.skipVote() }
+                }
             }
         },
     ) {
@@ -134,8 +145,13 @@ fun VoteScreen(vm: GameViewModel) {
                             color = Color(0xFFEDE7F2),
                             fontWeight = FontWeight.Medium,
                         )
+                        val by = s.nominatedBy(id)
                         Text(
-                            "выставил ${s.player(s.nominations[id]!!).name}",
+                            if (by.isEmpty()) {
+                                t("added_by_host")
+                            } else {
+                                t("nominated_by", by.joinToString { s.player(it).name })
+                            },
                             color = Muted,
                             fontSize = 12.sp,
                         )
@@ -160,12 +176,30 @@ fun VoteScreen(vm: GameViewModel) {
                             .padding(bottom = 6.dp),
                         horizontalArrangement = Arrangement.End,
                     ) {
-                        GhostButton("Выгнать ${p.name}") { vm.eliminate(id) }
+                        GhostButton(t("expel", p.name)) { vm.eliminate(id) }
                     }
                 }
             }
         }
     }
+
+    if (addOpen) {
+        AddVoteCandidateDialog(vm) { addOpen = false }
+    }
+}
+
+@Composable
+private fun AddVoteCandidateDialog(vm: GameViewModel, onDismiss: () -> Unit) {
+    val s = vm.s
+    PickPlayerDialog(
+        title = t("who_to_add"),
+        players = s.alivePlayers.filter { it.id !in s.votes.keys },
+        onDismiss = onDismiss,
+        onPick = { id ->
+            vm.addVoteCandidate(id)
+            onDismiss()
+        },
+    )
 }
 
 @Composable
@@ -191,13 +225,13 @@ fun GameOverScreen(vm: GameViewModel) {
     val winner = s.winner ?: Faction.RED
 
     Screen(
-        title = winnerText(winner),
-        subtitle = "Партия окончена",
+        title = t(winnerKey(winner)),
+        subtitle = t("game_over"),
         bottom = {
             Column {
-                BigButton("Новая партия тем же составом") { vm.newGameSameTable() }
+                BigButton(t("new_game_same")) { vm.newGameSameTable() }
                 Spacer(Modifier.height(8.dp))
-                GhostButton("Изменить состав", Modifier.fillMaxWidth()) { vm.reset() }
+                GhostButton(t("change_setup"), Modifier.fillMaxWidth()) { vm.reset() }
             }
         },
     ) {
@@ -205,9 +239,9 @@ fun GameOverScreen(vm: GameViewModel) {
             items(s.players, key = { it.id }) { p ->
                 PlayerRow(
                     player = p,
-                    badge = p.role.title,
+                    badge = t(p.role.titleKey),
                     badgeColor = factionColor(p.role.faction),
-                    trailing = if (p.alive) "выжил" else null,
+                    trailing = if (p.alive) t("survived") else null,
                 )
             }
         }

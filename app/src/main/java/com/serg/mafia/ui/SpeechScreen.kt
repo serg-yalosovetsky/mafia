@@ -40,20 +40,23 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
     val speaker = s.speakerId?.let { s.player(it) } ?: return
     val seconds = if (intro) s.setup.introSpeechSeconds else s.setup.daySpeechSeconds
     var nominateOpen by remember { mutableStateOf(false) }
+    var nomTableOpen by remember { mutableStateOf(false) }
     var foulOpen by remember { mutableStateOf(false) }
 
     Screen(
-        title = if (intro) "Первое знакомство" else "День ${s.dayNumber}",
-        subtitle = if (intro) {
-            "Каждый говорит по $seconds секунд"
-        } else {
-            "Речь ${seconds} с · можно выставить на голосование"
-        },
+        title = if (intro) t("intro_day_title") else t("day_title", s.dayNumber),
+        subtitle = if (intro) t("intro_day_sub", seconds) else t("day_sub", seconds),
         bottom = {
             Column {
                 if (!intro) {
-                    GhostButton("Выставить на голосование", Modifier.fillMaxWidth()) {
-                        nominateOpen = true
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        GhostButton(t("nominate"), Modifier.weight(1f)) { nominateOpen = true }
+                        GhostButton(t("who_nominated_short"), Modifier.weight(1f)) {
+                            nomTableOpen = true
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -63,15 +66,15 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    GhostButton("+ фол", Modifier.weight(1f)) { vm.addFoul(speaker.id) }
+                    GhostButton(t("foul_plus"), Modifier.weight(1f)) { vm.addFoul(speaker.id) }
                     GhostButton(
-                        if (speaker.fouls > 0) "− снять фол" else "нет фолов",
+                        if (speaker.fouls > 0) t("foul_minus") else t("no_fouls"),
                         Modifier.weight(1f),
                     ) { if (speaker.fouls > 0) vm.removeFoul(speaker.id) }
-                    GhostButton("стол", Modifier.weight(1f)) { foulOpen = true }
+                    GhostButton(t("all_fouls"), Modifier.weight(1f)) { foulOpen = true }
                 }
                 Spacer(Modifier.height(8.dp))
-                BigButton("Речь окончена") { vm.finishSpeech() }
+                BigButton(t("speech_done")) { vm.finishSpeech() }
             }
         },
     ) {
@@ -85,14 +88,14 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Говорит", color = Muted, fontSize = 13.sp)
+                    Text(t("speaks"), color = Muted, fontSize = 13.sp)
                     Text(
                         "${speaker.id + 1}. ${speaker.name}",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Gold,
                     )
                     if (speaker.fouls > 0) {
-                        Text("фолов: ${speaker.fouls}", color = Blood, fontSize = 13.sp)
+                        Text(t("fouls_of", speaker.fouls), color = Blood, fontSize = 13.sp)
                     }
                 }
             }
@@ -105,7 +108,7 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
             Spacer(Modifier.height(16.dp))
             val fouled = s.players.filter { it.fouls > 0 }
             if (fouled.isNotEmpty()) {
-                Text("Фолы:", color = Moon, fontSize = 13.sp)
+                Text(t("fouls_label"), color = Moon, fontSize = 13.sp)
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(Modifier.heightIn(max = 160.dp)) {
                     items(fouled, key = { it.id }) { p ->
@@ -114,9 +117,9 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
                             badge = "${p.fouls}",
                             badgeColor = Blood,
                             trailing = when {
-                                !p.alive -> "выбыл по фолам"
-                                p.speechSkipPending -> "пропустит речь"
-                                p.fouls == 1 -> "предупреждение"
+                                !p.alive -> t("foul_out")
+                                p.speechSkipPending -> t("foul_skip")
+                                p.fouls == 1 -> t("foul_warning")
                                 else -> null
                             },
                             onClick = { foulOpen = true },
@@ -130,25 +133,27 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
                 }
                 Spacer(Modifier.height(10.dp))
             }
-            if (!intro && s.nominations.isNotEmpty()) {
-                Text("На голосовании:", color = Moon, fontSize = 13.sp)
+            if (!intro && s.candidates.isNotEmpty()) {
+                Text(t("on_vote"), color = Moon, fontSize = 13.sp)
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(Modifier.heightIn(max = 220.dp)) {
-                    items(s.nominations.keys.toList(), key = { it }) { candidateId ->
-                        val by = s.nominations[candidateId]!!
+                    items(s.candidates, key = { it }) { candidateId ->
+                        val by = s.nominatedBy(candidateId)
                         PlayerRow(
                             player = s.player(candidateId),
-                            trailing = "выставил ${s.player(by).name}",
+                            badge = "${by.size}",
+                            badgeColor = Blood,
+                            trailing = t("nominated_by", by.joinToString { s.player(it).name }),
                             onClick = { vm.cancelNomination(candidateId) },
                         )
                     }
                 }
             } else if (!intro) {
-                Text("Пока никого не выставили", color = Muted, fontSize = 13.sp)
+                Text(t("nobody_nominated"), color = Muted, fontSize = 13.sp)
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "Осталось речей: ${s.speechQueue().size}",
+                t("speeches_left", s.speechQueue().size),
                 color = Muted,
                 fontSize = 12.sp,
             )
@@ -157,14 +162,23 @@ fun SpeechScreen(vm: GameViewModel, intro: Boolean) {
 
     if (nominateOpen) {
         PickPlayerDialog(
-            title = "Кого выставляет ${speaker.name}?",
-            players = s.alivePlayers.filter { it.id != speaker.id && it.id !in s.nominations.keys },
+            title = t("who_nominates", speaker.name),
+            players = s.alivePlayers.filter { it.id != speaker.id },
+            selectedId = s.nominationsBy[speaker.id],
+            onClear = if (s.nominationsBy.containsKey(speaker.id)) {
+                { vm.clearNomination(speaker.id); nominateOpen = false }
+            } else {
+                null
+            },
             onDismiss = { nominateOpen = false },
             onPick = { id ->
                 vm.nominate(speaker.id, id)
                 nominateOpen = false
             },
         )
+    }
+    if (nomTableOpen) {
+        NominationTableDialog(vm) { nomTableOpen = false }
     }
     if (foulOpen) {
         FoulDialog(vm) { foulOpen = false }
@@ -177,6 +191,8 @@ fun PickPlayerDialog(
     players: List<com.serg.mafia.model.Player>,
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
+    selectedId: Int? = null,
+    onClear: (() -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -185,14 +201,83 @@ fun PickPlayerDialog(
         text = {
             LazyColumn(Modifier.heightIn(max = 400.dp)) {
                 items(players, key = { it.id }) { p ->
-                    PlayerRow(player = p, onClick = { onPick(p.id) })
+                    PlayerRow(
+                        player = p,
+                        selected = p.id == selectedId,
+                        onClick = { onPick(p.id) },
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Отмена", color = Muted) }
+            TextButton(onClick = onDismiss) { Text(t("cancel"), color = Muted) }
+        },
+        dismissButton = onClear?.let { clear ->
+            { TextButton(onClick = clear) { Text(t("remove"), color = Blood) } }
         },
     )
+}
+
+/** Таблица «кто кого выставил»: у каждого игрока за столом свой записанный выбор. */
+@Composable
+fun NominationTableDialog(vm: GameViewModel, onDismiss: () -> Unit) {
+    val s = vm.s
+    var picking by remember { mutableStateOf<Int?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Surface1,
+        title = { Text(t("nomination_table"), color = Gold) },
+        text = {
+            Column {
+                Text(
+                    t("nomination_table_hint"),
+                    color = Muted,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(s.alivePlayers, key = { it.id }) { p ->
+                        val target = s.nominationsBy[p.id]
+                        PlayerRow(
+                            player = p,
+                            trailing = target?.let { t("arrow_to", s.player(it).name) } ?: t("nobody"),
+                            trailingColor = if (target != null) Gold else Muted,
+                            onClick = { picking = p.id },
+                            extra = {
+                                if (target != null) {
+                                    TextButton(onClick = { vm.clearNomination(p.id) }) {
+                                        Text("×", color = Moon, fontSize = 18.sp)
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(t("ok"), color = Gold) }
+        },
+    )
+
+    picking?.let { byId ->
+        PickPlayerDialog(
+            title = t("who_nominates", s.player(byId).name),
+            players = s.alivePlayers.filter { it.id != byId },
+            selectedId = s.nominationsBy[byId],
+            onClear = if (s.nominationsBy.containsKey(byId)) {
+                { vm.clearNomination(byId); picking = null }
+            } else {
+                null
+            },
+            onDismiss = { picking = null },
+            onPick = { id ->
+                vm.nominate(byId, id)
+                picking = null
+            },
+        )
+    }
 }
 
 /** Фолы: 1 — предупреждение, 2 — пропуск ближайшей речи, 3 — выбывает. */
@@ -202,11 +287,11 @@ fun FoulDialog(vm: GameViewModel, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Surface1,
-        title = { Text("Фолы", color = Color(0xFFEDE7F2)) },
+        title = { Text(t("fouls_title"), color = Color(0xFFEDE7F2)) },
         text = {
             Column {
                 Text(
-                    "1 — предупреждение · 2 — пропуск речи · 3 — смерть",
+                    t("fouls_rule"),
                     color = Muted,
                     fontSize = 12.sp,
                 )
@@ -231,7 +316,7 @@ fun FoulDialog(vm: GameViewModel, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Готово", color = Gold) }
+            TextButton(onClick = onDismiss) { Text(t("ok"), color = Gold) }
         },
     )
 }
@@ -239,11 +324,13 @@ fun FoulDialog(vm: GameViewModel, onDismiss: () -> Unit) {
 /** Экран-заглушка на случай, если круг речей закончился в неожиданной фазе. */
 @Composable
 fun EmptySpeechScreen(vm: GameViewModel) {
-    Screen(title = "Круг завершён") {
+    Screen(title = t("round_done")) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Все высказались", color = Muted)
+            Text(t("all_spoke"), color = Muted)
             Spacer(Modifier.height(12.dp))
-            BigButton(if (vm.s.phase == Phase.DAY) "К голосованию" else "К ночи") { vm.finishSpeech() }
+            BigButton(if (vm.s.phase == Phase.DAY) t("to_vote") else t("to_night")) {
+                vm.finishSpeech()
+            }
         }
     }
 }

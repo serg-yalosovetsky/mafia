@@ -49,15 +49,15 @@ fun NightScreen(vm: GameViewModel) {
         s.setup.suggestsFirstNightMiss && !s.firstNightMissDecided
 
     Screen(
-        title = "Ночь ${s.nightNumber}",
-        subtitle = "Шаг ${s.nightStepIndex + 1} из ${steps.size}",
+        title = t("night_title", s.nightNumber),
+        subtitle = t("night_step", s.nightStepIndex + 1, steps.size),
         bottom = {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (s.nightStepIndex > 0) {
-                    GhostButton("Назад", Modifier.weight(1f)) { vm.nightBack() }
+                    GhostButton(t("back"), Modifier.weight(1f)) { vm.nightBack() }
                 }
                 BigButton(
-                    if (s.nightStepIndex == steps.lastIndex) "Город просыпается" else "Дальше",
+                    if (s.nightStepIndex == steps.lastIndex) t("city_wakes") else t("next"),
                     Modifier.weight(2f),
                 ) { vm.nightNext() }
             }
@@ -68,11 +68,11 @@ fun NightScreen(vm: GameViewModel) {
                 RolePortraitCard(step.role, size = 92, showTitle = false)
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.padding(start = 14.dp)) {
-                    Text(step.title, style = MaterialTheme.typography.titleLarge, color = Gold)
-                    Text(step.prompt, color = Muted, fontSize = 13.sp)
+                    Text(t(step.titleKey), style = MaterialTheme.typography.titleLarge, color = Gold)
+                    Text(t(step.promptKey), color = Muted, fontSize = 13.sp)
                     if (step.role == Role.MAFIA && s.aliveBlack.size > 1) {
                         Text(
-                            "чёрных за столом: ${s.aliveBlack.size}",
+                            t("blacks_alive", s.aliveBlack.size),
                             color = BlackTeam,
                             fontSize = 12.sp,
                         )
@@ -82,10 +82,7 @@ fun NightScreen(vm: GameViewModel) {
             Spacer(Modifier.height(10.dp))
 
             if (actorBlocked) {
-                Banner(
-                    "Заблокирован бабочкой — действие не сработает",
-                    Blood,
-                )
+                Banner(t("blocked_banner"), Blood)
             }
 
             if (offerMiss) {
@@ -97,22 +94,22 @@ fun NightScreen(vm: GameViewModel) {
                         .padding(12.dp),
                 ) {
                     Text(
-                        "Мафия сильна по составу (${s.setup.mafiaTotal} чёрных на ${s.setup.playerCount})",
+                        t("miss_offer_head", s.setup.mafiaTotal, s.setup.playerCount),
                         color = Gold,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
                     )
                     Text(
-                        "Предложить первую ночь без выстрела — мафия стреляет в воздух?",
+                        t("miss_offer_body"),
                         color = Muted,
                         fontSize = 13.sp,
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BigButton("В воздух", Modifier.weight(1f), color = Moon.copy(alpha = 0.7f)) {
+                        BigButton(t("miss_yes"), Modifier.weight(1f), color = Moon.copy(alpha = 0.7f)) {
                             vm.setFirstNightMiss(true)
                         }
-                        BigButton("Стреляем", Modifier.weight(1f)) {
+                        BigButton(t("miss_no"), Modifier.weight(1f)) {
                             vm.setFirstNightMiss(false)
                         }
                     }
@@ -121,21 +118,21 @@ fun NightScreen(vm: GameViewModel) {
             }
 
             if (s.night.mafiaMissed && step.role == Role.MAFIA) {
-                Banner("Первая ночь: выстрел в воздух, жертвы не будет", Moon)
+                Banner(t("miss_banner"), Moon)
             }
 
             // Результат проверки комиссара — только ведущему и только тут.
             if (step.role == Role.SHERIFF && selected != null && !actorBlocked) {
                 val target = s.player(selected)
                 Banner(
-                    "${target.name} — ${factionLabel(target.role.checksAs)}",
+                    t("check_result", target.name, t(factionKey(target.role.checksAs))),
                     factionColor(target.role.checksAs),
                 )
             }
             if (step.role == Role.DON && selected != null && !actorBlocked) {
                 val target = s.player(selected)
                 Banner(
-                    if (target.role == Role.SHERIFF) "Это комиссар!" else "Не комиссар",
+                    if (target.role == Role.SHERIFF) t("is_sheriff") else t("not_sheriff"),
                     if (target.role == Role.SHERIFF) Gold else Muted,
                 )
             }
@@ -147,10 +144,12 @@ fun NightScreen(vm: GameViewModel) {
                 badgeFor = { p ->
                     when {
                         // Шаг комиссара: ведущий сразу видит принадлежность каждого.
-                        step.revealFactions -> factionLabel(p.role.checksAs) to factionColor(p.role.checksAs)
-                        step.revealSheriff && p.role == Role.SHERIFF -> "комиссар" to Gold
-                        step.role == Role.MAFIA && p.role.isBlack -> "свой" to BlackTeam
-                        step.role == Role.BUTTERFLY && p.id == s.night.butterflyTarget -> "блок" to Blood
+                        step.revealFactions ->
+                            t(factionKey(p.role.checksAs)) to factionColor(p.role.checksAs)
+                        step.revealSheriff && p.role == Role.SHERIFF -> t("badge_sheriff") to Gold
+                        step.role == Role.MAFIA && p.role.isBlack -> t("badge_own") to BlackTeam
+                        step.role == Role.BUTTERFLY && p.id == s.night.butterflyTarget ->
+                            t("badge_block") to Blood
                         else -> null
                     }
                 },

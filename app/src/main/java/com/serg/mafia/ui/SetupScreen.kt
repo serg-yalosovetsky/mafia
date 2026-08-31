@@ -33,31 +33,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.serg.mafia.model.GameViewModel
 import com.serg.mafia.model.Role
 
 @Composable
-fun SetupScreen(vm: GameViewModel) {
+fun SetupScreen(vm: GameViewModel, onLangChange: (Lang) -> Unit) {
     val setup = vm.s.setup
     var namesOpen by remember { mutableStateOf(false) }
 
     Screen(
-        title = "Новая партия",
-        subtitle = "Собери стол и раздай роли",
+        title = t("setup_title"),
+        subtitle = t("setup_sub"),
         bottom = {
             Column {
-                setup.validationMessage?.let {
-                    Text(it, color = Blood, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
+                setup.validationKey?.let { (key, args) ->
+                    Text(
+                        t(key, *args.toTypedArray()),
+                        color = Blood,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
                 }
-                BigButton("Раздать роли", enabled = setup.isValid) { vm.startDeal() }
+                BigButton(t("deal_roles"), enabled = setup.isValid) { vm.startDeal() }
             }
         },
     ) {
         LazyColumn {
             item {
-                SectionCard("Игроков за столом") {
+                SectionCard(t("players_at_table")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Stepper(
                             value = setup.playerCount,
@@ -68,17 +74,17 @@ fun SetupScreen(vm: GameViewModel) {
                         Spacer(Modifier.width(16.dp))
                         Column {
                             Text(
-                                "Мирных: ${setup.roleCounts[Role.CIVILIAN] ?: 0}",
+                                t("peaceful_count", setup.roleCounts[Role.CIVILIAN] ?: 0),
                                 color = RedTeam,
                                 fontSize = 14.sp,
                             )
-                            Text(setup.difficultyLabel, color = Gold, fontSize = 13.sp)
+                            Text(t(setup.difficultyKey), color = Gold, fontSize = 13.sp)
                         }
                     }
                 }
             }
             item {
-                SectionCard("Чёрных за столом") {
+                SectionCard(t("blacks_at_table")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Stepper(
                             value = setup.mafiaTotal,
@@ -88,9 +94,13 @@ fun SetupScreen(vm: GameViewModel) {
                         )
                         Spacer(Modifier.width(16.dp))
                         Column {
-                            Text("мафия + дон", color = BlackTeam, fontSize = 13.sp)
+                            Text(t("mafia_plus_don"), color = BlackTeam, fontSize = 13.sp)
                             Text(
-                                if (setup.mafiaIsManual) "вручную · обычно ${setup.autoMafia}" else "обычное число",
+                                if (setup.mafiaIsManual) {
+                                    t("manual_usual", setup.autoMafia)
+                                } else {
+                                    t("usual_number")
+                                },
                                 color = Muted,
                                 fontSize = 12.sp,
                             )
@@ -98,38 +108,38 @@ fun SetupScreen(vm: GameViewModel) {
                     }
                     if (setup.mafiaIsManual) {
                         Spacer(Modifier.height(8.dp))
-                        GhostButton("Вернуть обычное число") {
+                        GhostButton(t("return_usual")) {
                             vm.updateSetup { it.copy(mafiaOverride = null) }
                         }
                     }
                 }
             }
             item {
-                SectionCard("Роли в игре") {
-                    RoleToggle("Дон", "Ночью ищет комиссара", setup.withDon) { v ->
+                SectionCard(t("roles_in_game")) {
+                    RoleToggle(t("role_don"), t("don_hint"), setup.withDon) { v ->
                         vm.updateSetup { it.copy(withDon = v) }
                     }
-                    RoleToggle("Комиссар", "Ночью проверяет игрока", setup.withSheriff) { v ->
+                    RoleToggle(t("role_sheriff"), t("sheriff_hint"), setup.withSheriff) { v ->
                         vm.updateSetup { it.copy(withSheriff = v) }
                     }
-                    RoleToggle("Врач", "Ночью лечит одного", setup.withDoctor) { v ->
+                    RoleToggle(t("role_doctor"), t("doctor_hint"), setup.withDoctor) { v ->
                         vm.updateSetup { it.copy(withDoctor = v) }
                     }
-                    RoleToggle("Бабочка", "Блокирует ночное действие", setup.withButterfly) { v ->
+                    RoleToggle(t("role_butterfly"), t("butterfly_hint"), setup.withButterfly) { v ->
                         vm.updateSetup { it.copy(withButterfly = v) }
                     }
-                    RoleToggle("Маньяк", "Играет сам за себя", setup.withManiac) { v ->
+                    RoleToggle(t("role_maniac"), t("maniac_hint"), setup.withManiac) { v ->
                         vm.updateSetup { it.copy(withManiac = v) }
                     }
                     RoleToggle(
-                        "Первая ночь — в воздух",
-                        "Мафия промахивается первым выстрелом: красным легче",
+                        t("first_night_miss"),
+                        t("first_night_miss_hint"),
                         setup.firstNightMiss,
                     ) { v -> vm.updateSetup { it.copy(firstNightMiss = v) } }
                 }
             }
             item {
-                SectionCard("Состав") {
+                SectionCard(t("composition")) {
                     setup.roleCounts.forEach { (role, count) ->
                         Row(
                             Modifier
@@ -144,25 +154,47 @@ fun SetupScreen(vm: GameViewModel) {
                                     .background(factionColor(role.faction)),
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(role.title, color = Color(0xFFEDE7F2), modifier = Modifier.weight(1f))
+                            Text(t(role.titleKey), color = Color(0xFFEDE7F2), modifier = Modifier.weight(1f))
                             Text("$count", color = Gold, fontWeight = FontWeight.Bold)
                         }
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Всего ролей: ${setup.assignedTotal} из ${setup.playerCount}",
+                        t("roles_total", setup.assignedTotal, setup.playerCount),
                         color = if (setup.isValid) Muted else Blood,
                         fontSize = 13.sp,
                     )
                 }
             }
             item {
-                SectionCard("Хронометраж") {
-                    TimeRow("Речь на знакомстве", setup.introSpeechSeconds) { v ->
+                SectionCard(t("timing")) {
+                    TimeRow(t("speech_intro"), setup.introSpeechSeconds) { v ->
                         vm.updateSetup { it.copy(introSpeechSeconds = v) }
                     }
-                    TimeRow("Речь днём", setup.daySpeechSeconds) { v ->
+                    TimeRow(t("speech_day"), setup.daySpeechSeconds) { v ->
                         vm.updateSetup { it.copy(daySpeechSeconds = v) }
+                    }
+                }
+            }
+            item {
+                SectionCard(t("language")) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Lang.entries.forEach { lang ->
+                            val active = setup.lang == lang.code
+                            Text(
+                                lang.label,
+                                color = if (active) Ink else Color(0xFFEDE7F2),
+                                fontSize = 14.sp,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (active) Gold else Surface2)
+                                    .clickable { onLangChange(lang) }
+                                    .padding(vertical = 12.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
             }
@@ -173,7 +205,7 @@ fun SetupScreen(vm: GameViewModel) {
                         .padding(vertical = 8.dp),
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    GhostButton(if (namesOpen) "Свернуть имена" else "Задать имена игроков") {
+                    GhostButton(if (namesOpen) t("hide_names") else t("set_names")) {
                         namesOpen = !namesOpen
                     }
                 }
@@ -183,7 +215,7 @@ fun SetupScreen(vm: GameViewModel) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { vm.renamePlayer(index, it) },
-                        label = { Text("Игрок ${index + 1}") },
+                        label = { Text(t("player_n", index + 1)) },
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -275,7 +307,7 @@ private fun TimeRow(title: String, seconds: Int, onChange: (Int) -> Unit) {
         Text(title, color = Color(0xFFEDE7F2), modifier = Modifier.weight(1f))
         StepBtn("−") { if (seconds > 15) onChange(seconds - 15) }
         Text(
-            "${seconds} с",
+            t("seconds_short", seconds),
             color = Gold,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 12.dp),

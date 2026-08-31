@@ -66,7 +66,7 @@ class GameLogicTest {
     fun `перебор спец-ролей не даёт начать партию`() {
         val setup = Setup(playerCount = 4, withButterfly = true, withManiac = true)
         assertFalse(setup.isValid)
-        assertTrue(setup.validationMessage!!.contains("Ролей больше"))
+        assertEquals("err_too_many_roles", setup.validationKey!!.first)
     }
 
     @Test
@@ -228,7 +228,7 @@ class GameLogicTest {
         vm.finishSpeechRound()
         // Речь пропущена и флаг сгорел — на следующий день игрок говорит.
         assertFalse(vm.s.player(victimOfFouls.id).speechSkipPending)
-        assertTrue(vm.s.log.any { it.contains("пропускает речь") })
+        assertTrue(vm.s.log.any { it.key == "log_skip_speech" })
     }
 
     @Test
@@ -240,11 +240,11 @@ class GameLogicTest {
         val target = vm.s.alivePlayers.first { it.role == Role.CIVILIAN }
         repeat(3) { vm.addFoul(target.id) }
         assertFalse(vm.s.player(target.id).alive)
-        assertEquals("3 фола", vm.s.player(target.id).deathReason)
+        assertEquals("death_fouls", vm.s.player(target.id).deathReasonKey)
     }
 
     @Test
-    fun `выставление не дублируется`() {
+    fun `выставления пишутся по каждому игроку, кандидат не дублируется`() {
         val vm = game()
         vm.finishDeal(); vm.finishIntro(); vm.finishSpeechRound()
         repeat(vm.s.nightSteps.size) { vm.nightNext() }
@@ -252,8 +252,17 @@ class GameLogicTest {
         val alive = vm.s.alivePlayers
         vm.nominate(alive[0].id, alive[3].id)
         vm.nominate(alive[1].id, alive[3].id)
-        assertEquals(1, vm.s.nominations.size)
-        assertEquals(alive[0].id, vm.s.nominations[alive[3].id])
+        // Двое выставили одного: кандидат один, а выставивших двое.
+        assertEquals(listOf(alive[3].id), vm.s.candidates)
+        assertEquals(setOf(alive[0].id, alive[1].id), vm.s.nominatedBy(alive[3].id).toSet())
+
+        // Игрок передумал — его выставление снимается, кандидат остаётся от второго.
+        vm.clearNomination(alive[0].id)
+        assertEquals(listOf(alive[1].id), vm.s.nominatedBy(alive[3].id))
+
+        // Смена цели заменяет прежний выбор, а не добавляет второй.
+        vm.nominate(alive[1].id, alive[4].id)
+        assertEquals(listOf(alive[4].id), vm.s.candidates)
     }
 
     @Test

@@ -36,10 +36,10 @@ fun DealScreen(vm: GameViewModel) {
     var seen by remember(s.dealIndex) { mutableStateOf(false) }
 
     Screen(
-        title = "Раздача ролей",
-        subtitle = "Игрок ${s.dealIndex + 1} из ${s.players.size} · телефон идёт по кругу",
+        title = t("deal_title"),
+        subtitle = t("deal_sub", s.dealIndex + 1, s.players.size),
         bottom = {
-            BigButton(if (seen) "Я запомнил, передаю дальше" else "Сначала посмотри роль", enabled = seen) {
+            BigButton(if (seen) t("memorized") else t("look_first"), enabled = seen) {
                 vm.dealNext()
             }
         },
@@ -78,17 +78,17 @@ fun DealScreen(vm: GameViewModel) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(16.dp),
                         ) {
-                            Text("Роль скрыта", color = Gold, fontSize = 20.sp)
+                            Text(t("role_hidden"), color = Gold, fontSize = 20.sp)
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "Держи палец на карточке,\nчтобы увидеть свою роль",
+                                t("hold_to_see"),
                                 color = Muted,
                                 textAlign = TextAlign.Center,
                                 fontSize = 16.sp,
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "отпустишь — роль снова скроется",
+                                t("release_hides"),
                                 color = Muted.copy(alpha = 0.6f),
                                 fontSize = 13.sp,
                             )
@@ -101,7 +101,7 @@ fun DealScreen(vm: GameViewModel) {
                             RolePortraitCard(player.role, size = 200)
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                player.role.hint,
+                                t(player.role.hintKey),
                                 color = Color(0xFFEDE7F2),
                                 textAlign = TextAlign.Center,
                                 fontSize = 15.sp,
