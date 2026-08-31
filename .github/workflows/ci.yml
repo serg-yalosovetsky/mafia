@@ -41,7 +41,14 @@ jobs:
       - name: Android SDK — platform 35 и build-tools 35
         run: |
           set -eu
-          SDKMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          # Без `ls | head` (SC2012): предпочитаем канонический latest, иначе
+          # берём первый элемент отсортированного glob'а — оба пути без парсинга вывода ls.
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            candidates=("$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager)
+            SDKMANAGER="${candidates[0]}"
+          fi
+          test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
 

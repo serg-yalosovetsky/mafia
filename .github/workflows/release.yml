@@ -4,10 +4,20 @@ name: release-apk
 # Ручной запуск (workflow_dispatch) делает тот же APK, но версией 0.0.<run>-dev
 # и без создания релиза — чтобы можно было проверить пайплайн, не плодя теги.
 #
-# Секреты репозитория (Settings → Secrets and variables → Actions):
+# Ключ подписи берётся из секретов ОКРУЖЕНИЯ `release`, а не из секретов
+# репозитория (Settings → Environments → release → Environment secrets):
 #   MAFIA_KEYSTORE_B64      — base64 файла mafia-release.jks
 #   MAFIA_KEYSTORE_PASSWORD — пароль хранилища (он же пароль ключа)
 #   MAFIA_KEY_ALIAS         — алиас ключа
+#
+# ВНИМАНИЕ, пока секреты заводить НЕЛЬЗЯ. На текущем тарифе (GitHub Free,
+# приватный репозиторий) окружение принимает только политику ref'ов; required
+# reviewers и wait timer отклоняются с HTTP 422 "billing plan", branch
+# protection и rulesets — 403 "Upgrade to GitHub Pro or make this repository
+# public". Значит держатель прав write может запустить этот workflow с
+# собственного коммита и вытащить ключ подписи. Заводить MAFIA_* можно только
+# после того, как появится required reviewer (GitHub Pro либо публичный репо),
+# иначе ключ подписывается локально и в CI не кладётся вовсе.
 on:
   push:
     tags: ['v*']
@@ -26,6 +36,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Секреты ключа живут в этом окружении: джоб без него их не увидит, и
+    # запуск с ref'а вне политики (не тег v* и не main) до них не доберётся.
+    environment: release
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +54,14 @@ jobs:
       - name: Android SDK — platform 35 и build-tools 35
         run: |
           set -eu
-          SDKMANAGER=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          # Без `ls | head` (SC2012): предпочитаем канонический latest, иначе
+          # берём первый элемент отсортированного glob'а — оба пути без парсинга вывода ls.
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            candidates=("$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager)
+            SDKMANAGER="${candidates[0]}"
+          fi
+          test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
 
